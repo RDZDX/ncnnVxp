@@ -6,11 +6,21 @@
 #include "vm4res.h"
 #include "vmres.h"
 #include "vmpromng.h"
+#include "vmcamera.h"
 
+#define quantize 1
+
+#ifdef quantize
 #include "yolo_cat_int8.id.h"
 #include "yolo_cat_int8.mem.h"
-//#include "yolo-fastestv2-opt.id.h"
-//#include "yolo-fastestv2-opt.mem.h"
+
+#define cat_param_bin cat_int8_param_bin
+#define cat_bin cat_int8_bin
+#define cat_param_id cat_int8_param_id
+#else
+#include "yolo_cat.id.h"
+#include "yolo_cat.mem.h"
+#endif
 
 #include <net.h>
 #include <cstdint>
@@ -21,6 +31,7 @@ VMUINT8* layer_buf = 0;
 VMINT screen_w = 0;
 VMINT screen_h = 0;
 VMUINT8* demo_canvas = 0;
+VM_CAMERA_HANDLE handle_c;
 
 void handle_sysevt(VMINT message, VMINT param); // system events 
 void handle_keyevt(VMINT event, VMINT keycode); // key events 
@@ -71,13 +82,13 @@ void draw_text_persents(int l, int x, int y, float p, unsigned short c) {
 	char str[100] = {};
 
 	int v = p * 10.f;
-	
-	vm_sprintf(str, "%d.%d%%", v / 10, v % 10);
+
+	sprintf(str, "%d.%d%%", v / 10, v % 10);
 
 	draw_text(l, x, y, str, c);
 }
 
-void find_cats() {
+void find_cats(ncnn::Mat &in) {
 	ncnn::Option opt;
 	opt.lightmode = true;
 	opt.num_threads = 1;
@@ -85,49 +96,18 @@ void find_cats() {
 	ncnn::Net yolo;
 	yolo.opt = opt;
 
-	yolo.load_param(cat_int8_param_bin);
-	yolo.load_model(cat_int8_bin);
-
-	ncnn::Mat in(96, 96, 3);
-
-	float* b_ptr = in.channel(0);
-	float* g_ptr = in.channel(1);
-	float* r_ptr = in.channel(2);
-
-	uint16_t* cat_rgb565 = (uint16_t*)(demo_canvas+32); 
-
-	for (int y = 0; y < 96; y++) {
-		for (int x = 0; x < 96; x++) {
-			int src_x = (x * 100) / 96;
-			int src_y = (y * 100) / 96;
-
-			uint16_t pixel = cat_rgb565[src_y * 100 + src_x];
-
-			uint8_t r5 = (pixel >> 11) & 0x1F;
-			uint8_t g6 = (pixel >> 5) & 0x3F;
-			uint8_t b5 = pixel & 0x1F;
-
-			float R = (float)((r5 << 3) | (r5 >> 2));
-			float G = (float)((g6 << 2) | (g6 >> 4));
-			float B = (float)((b5 << 3) | (b5 >> 2));
-
-			int out_idx = y * 96 + x;
-
-			b_ptr[out_idx] = B * 0.00392156f;
-			g_ptr[out_idx] = G * 0.00392156f;
-			r_ptr[out_idx] = R * 0.00392156f;
-		}
-	}
+	yolo.load_param(cat_param_bin);
+	yolo.load_model(cat_bin);
 
 	ncnn::Extractor ex = yolo.create_extractor();
 	ex.set_light_mode(true);
 
-	ex.input(cat_int8_param_id::LAYER_in0, in);
+	ex.input(cat_param_id::LAYER_in0, in);
 
 	ncnn::Mat out0, out1;
 
-	ex.extract(cat_int8_param_id::BLOB_out0, out0);
-	ex.extract(cat_int8_param_id::BLOB_out1, out1);
+	ex.extract(cat_param_id::BLOB_out0, out0);
+	ex.extract(cat_param_id::BLOB_out1, out1);
 
 	const float anchor[12] = { 16.23f,26.11f, 28.11f,68.63f, 39.09f,40.95f,
 							  49.31f,78.52f, 66.02f,54.64f, 79.19f,85.96f };
@@ -183,7 +163,7 @@ void find_cats() {
 		}
 	}
 
-	float nms_threshold = 0.45f; 
+	float nms_threshold = 0.45f;
 
 	for (int i = 0; i < cat_count; i++) {
 		if (detected_cats[i].keep == 0) continue;
@@ -192,7 +172,7 @@ void find_cats() {
 			if (detected_cats[j].keep == 1) {
 				float iou = calculate_iou(detected_cats[i], detected_cats[j]);
 				if (iou > nms_threshold) {
-					detected_cats[j].keep = 0; 
+					detected_cats[j].keep = 0;
 				}
 			}
 		}
@@ -208,7 +188,7 @@ void find_cats() {
 		VM_COLOR_888_TO_565(255, 128, 0),
 		VM_COLOR_888_TO_565(128, 0, 255),
 		VM_COLOR_888_TO_565(0, 255, 128),
-		VM_COLOR_888_TO_565(255, 255, 255) 
+		VM_COLOR_888_TO_565(255, 255, 255)
 	};
 
 	int actual_cats_drawn = 0;
@@ -219,10 +199,10 @@ void find_cats() {
 			float cat_w = detected_cats[i].x2 - detected_cats[i].x1;
 			float cat_h = detected_cats[i].y2 - detected_cats[i].y1;
 
-			int draw_x = (int)(detected_cats[i].x1 * (100.0f / 96.0f));
-			int draw_y = (int)(detected_cats[i].y1 * (100.0f / 96.0f));
-			int draw_w = (int)(cat_w * (100.0f / 96.0f));
-			int draw_h = (int)(cat_h * (100.0f / 96.0f));
+			int draw_x = (int)(detected_cats[i].x1 * (240.0f / 96.0f));
+			int draw_y = (int)(detected_cats[i].y1 * (240.0f / 96.0f));
+			int draw_w = (int)(cat_w * (240.0f / 96.0f));
+			int draw_h = (int)(cat_h * (240.0f / 96.0f));
 
 			if (draw_x < 0) draw_x = 0;
 			if (draw_y < 0) draw_y = 0;
@@ -240,20 +220,154 @@ void find_cats() {
 	}
 }
 
+static float float_lut[256];
+void init_lut() {
+	for (int i = 0; i < 256; i++) {
+		float_lut[i] = (float)i * 0.003921568f;
+	}
+}
+
+unsigned char claim(int x) {
+	return x > 255 ? 255 : (x < 0 ? 0 : x);
+}
+
+void cam_message_callback(const vm_cam_notify_data_t* notify_data, void* user_data) {
+	if (notify_data != NULL)
+	{
+		vm_cam_frame_data_t frame;
+
+		switch (notify_data->cam_message) {
+		case VM_CAM_PREVIEW_FRAME_RECEIVED:
+			if (vm_camera_get_frame(handle_c, &frame) == VM_CAM_SUCCESS)
+			{
+				unsigned int time1 = vm_get_tick_count();
+
+				ncnn::Mat in(96, 96, 3);
+
+				float* ptr_r = in.channel(0);
+				float* ptr_g = in.channel(1);
+				float* ptr_b = in.channel(2);
+
+				//int idx = 0;
+				int i = 0;
+
+				int nn_x = 0;
+				int nn_y = 0;
+
+				VMUINT app_frame_data_size = 0;
+				VMUINT8* app_frame_data = NULL;
+				{
+					unsigned short* layer_buf_s = (unsigned short*)layer_buf;
+					unsigned char* s = (unsigned char*)frame.pixtel_data;
+					for (unsigned int y = 0; y < 240; ++y)
+						for (unsigned int x = 0; x < 240; x += 2)
+						{
+							int u0 = *s++ - 128;
+							int y0 = *s++ - 16;
+							int v = *s++ - 128;
+							int y2 = *s++ - 16;
+
+							int tmp = 298 * y0 + 128;
+							int vv = 409 * v;
+							int uv = -100 * u0 - 208 * v;
+							int uu = 516 * u0;
+
+							unsigned char r = claim((tmp + vv) >> 8);
+							unsigned char g = claim((tmp + uv) >> 8);
+							unsigned char b = claim((tmp + uu) >> 8);
+
+							layer_buf_s[i] = VM_COLOR_888_TO_565(r, g, b);
+
+							if ((x * 96 / 240 == nn_x) && (y * 96 / 240 == nn_y)) {
+								int idx = nn_y * 96 + nn_x;
+								ptr_r[idx] = float_lut[r];
+								ptr_g[idx] = float_lut[g];
+								ptr_b[idx] = float_lut[b];
+
+								nn_x++;
+								if (nn_x >= 96) { nn_x = 0; nn_y++; }
+							}
+
+							tmp = 298 * y2 + 128;
+							r = claim((tmp + vv) >> 8);
+							g = claim((tmp + uv) >> 8);
+							b = claim((tmp + uu) >> 8);
+
+							layer_buf_s[i + 1] = VM_COLOR_888_TO_565(r, g, b);
+
+							if (((x+1) * 96 / 240 == nn_x) && (y * 96 / 240 == nn_y)) {
+								int idx = nn_y * 96 + nn_x;
+								ptr_r[idx] = float_lut[r];
+								ptr_g[idx] = float_lut[g];
+								ptr_b[idx] = float_lut[b];
+
+								nn_x++;
+								if (nn_x >= 96) { nn_x = 0; nn_y++; }
+							}
+
+							i += 2;
+						}
+				}
+
+				/*unsigned short* layer_buf_s = (unsigned short*)layer_buf;
+
+				for (int y = 0; y < 96; ++y)
+					for (int x = 0; x < 96; ++x) {
+						int idx = y*96+x;
+						unsigned short r = (unsigned short)(ptr_r[idx] * 255.0f);
+						unsigned short g = (unsigned short)(ptr_g[idx] * 255.0f);
+						unsigned short b = (unsigned short)(ptr_b[idx] * 255.0f);
+
+						layer_buf_s[y * 240 + x] = VM_COLOR_888_TO_565(r, g, b);;
+					}*/
+
+
+				vm_graphic_fill_rect(layer_buf, 0, 240, screen_w, screen_h - 240, VM_COLOR_WHITE, VM_COLOR_WHITE);
+
+				unsigned int time2 = vm_get_tick_count();
+				find_cats(in);
+				unsigned int time3 = vm_get_tick_count();
+
+				char str[100] = {};
+				sprintf(str, "Frame processing: %d ms", time2 - time1);
+				draw_text(layer_hdl[0], 0, 240, str, 0x0000);
+				sprintf(str, "ncnn computing: %d ms", time3 - time2);
+				draw_text(layer_hdl[0], 0, 240 + vm_graphic_get_character_height(), str, 0x0000);
+
+				vm_graphic_flush_layer(layer_hdl, 1);
+
+			}
+			break;
+		}
+	}
+}
+
 void vm_main(void) {
 	layer_hdl[0] = -1;
 	screen_w = vm_graphic_get_screen_width();
 	screen_h = vm_graphic_get_screen_height();
-	
+
+	layer_hdl[0] = vm_graphic_create_layer(0, 0, screen_w, screen_h, -1);
+	layer_buf = vm_graphic_get_layer_buffer(layer_hdl[0]);
+	vm_graphic_set_clip(0, 0, screen_w, screen_h);
+
 	vm_reg_sysevt_callback(handle_sysevt);
 	vm_reg_keyboard_callback(handle_keyevt);
 	vm_reg_pen_callback(handle_penevt);
 
-	VMINT size = 0;
-	VMUINT8* res = vm_load_resource("demo.png", &size);
-	demo_canvas = (VMUINT8*)vm_graphic_load_image(res, size);
-	vm_free(res);
+	vm_switch_power_saving_mode(turn_off_mode);
 
+	init_lut();
+
+	vm_create_camera_instance((VM_CAMERA_ID)vm_camera_get_main_camera_id(), &handle_c);
+	vm_camera_register_notify(handle_c, cam_message_callback, 0);
+
+	vm_cam_size_t my_cam_size;
+	my_cam_size.width = 240;
+	my_cam_size.height = 240;
+	vm_camera_set_preview_size(handle_c, &my_cam_size);
+
+	vm_camera_preview_start(handle_c);
 }
 
 void handle_sysevt(VMINT message, VMINT param) {
@@ -262,54 +376,27 @@ void handle_sysevt(VMINT message, VMINT param) {
 	case VM_MSG_CREATE:
 		break;
 	case VM_MSG_PAINT:
-		layer_hdl[0] = vm_graphic_create_layer(0, 0, screen_w, screen_h, -1);
-
-		layer_buf = vm_graphic_get_layer_buffer(layer_hdl[0]);
-		
-		vm_graphic_set_clip(0, 0, screen_w, screen_h);
-		
-		draw_hello();
 		break;
-	case VM_MSG_HIDE:	
-		if( layer_hdl[0] != -1 )
-		{
-			vm_graphic_delete_layer(layer_hdl[0]);
-			layer_hdl[0] = -1;
-		}
+	case VM_MSG_HIDE:
 		break;
 	case VM_MSG_QUIT:
-		if( layer_hdl[0] != -1 )
-		{
-			vm_graphic_delete_layer(layer_hdl[0]);
-			layer_hdl[0] = -1;
-		}
+		vm_release_camera_instance(handle_c);
 		break;
 	}
 #else
 	switch (message) {
 	case VM_MSG_CREATE:
 	case VM_MSG_ACTIVE:
-		layer_hdl[0] = vm_graphic_create_layer(0, 0, screen_w, screen_h, -1);
-
-		layer_buf = vm_graphic_get_layer_buffer(layer_hdl[0]);
-
-		vm_graphic_set_clip(0, 0, screen_w, screen_h);
 		break;
-		
+
 	case VM_MSG_PAINT:
-		draw_hello();
 		break;
-		
+
 	case VM_MSG_INACTIVE:
-		if( layer_hdl[0] != -1 )
-			vm_graphic_delete_layer(layer_hdl[0]);
-		
-		break;	
+		break;
 	case VM_MSG_QUIT:
-		//if( layer_hdl[0] != -1 )
-		//	vm_graphic_delete_layer(layer_hdl[0]);
-		
-		break;	
+		vm_release_camera_instance(handle_c);
+		break;
 	}
 #endif
 }
@@ -323,7 +410,7 @@ static void draw_hello(void) {
 
 	vm_graphic_blt(layer_buf, 0, 0, demo_canvas, 0, 0, 100, 100, 1);
 
-	find_cats();
+	//find_cats();
 
 	vm_graphic_flush_layer(layer_hdl, 1);
 }

@@ -4,7 +4,7 @@ project ("ncnnVxp")
 
 set(APP_NAME "ncnnVxp")
 set(DEVELOPER_NAME "XimikBoda")
-set(RAM "3100") #Ram requirement (in kb)
+set(RAM "3150") #Ram requirement (in kb)
 set(IMSI "1234567890" CACHE STRING "Imsi of first SIM-card")
 set(API "File SIM_card ProMng Camera") #Api for app, 
 set(APPID "0") #App id, special values: -1 is personal (imsi), 0 is in developing
@@ -32,8 +32,8 @@ set(NCNN_OPENMP OFF CACHE BOOL "Disable OpenMP" FORCE)
 set(NCNN_VULKAN OFF CACHE BOOL "Disable Vulkan" FORCE)
 set(NCNN_STDIO OFF CACHE BOOL "Disable STDIO" FORCE)
 set(NCNN_STRING OFF CACHE BOOL "Disable string" FORCE)
-set(NCNN_RUNTIME_CPU OFF CACHE BOOL "Disable CPU runtime detection" FORCE)
 set(NCNN_PIXEL OFF CACHE BOOL "Disable pixel drawing" FORCE)
+#set(NCNN_RUNTIME_CPU OFF CACHE BOOL "Disable CPU runtime detection" FORCE)
 #set(Threads_FOUND TRUE CACHE BOOL "Mock Threads" FORCE)
 #add_library(Threads::Threads INTERFACE IMPORTED)
 

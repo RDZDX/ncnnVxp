@@ -1,7 +1,6 @@
 set(TARGET_NAME "resources")
 
 set(RESOURCES_FILES
-      demo.png
 )
 
 add_custom_command( # repack triger 
