@@ -1,3 +1,7 @@
+## ncnnVxp
+
+NCNN network demonstration on MRE platform mobile phones, including Nokia S30+ devices.
+
 ## Nokia Phone Signing
 
 For use on Nokia mobile phones, the application must be signed using the IMSI code of your SIM card.
