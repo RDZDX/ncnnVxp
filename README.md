@@ -13,5 +13,7 @@ Model source: https://github.com/freshtechyy/NCNN-Deployment-image-classificatio
 ## Files
 
 - [ncnnVxp.vxp](https://rdzdx.github.io/ncnnVxp/ncnnVxp.vxp)
+- [ncnnVxp1.vxp](https://rdzdx.github.io/ncnnVxp/ncnnVxp1.vxp)
 
 ![alt text](https://rdzdx.github.io/ncnnVxp/picture.jpg)
+![alt text](https://rdzdx.github.io/ncnnVxp/picture1.jpg)
