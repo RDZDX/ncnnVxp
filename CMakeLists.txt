@@ -4,7 +4,7 @@ project ("ncnnVxp")
 
 set(APP_NAME "ncnnVxp")
 set(DEVELOPER_NAME "XimikBoda")
-set(RAM "3150") #Ram requirement (in kb)
+set(RAM "1500") #Ram requirement (in kb)
 set(IMSI "1234567890" CACHE STRING "Imsi of first SIM-card")
 set(API "File SIM_card ProMng Camera") #Api for app, 
 set(APPID "0") #App id, special values: -1 is personal (imsi), 0 is in developing
